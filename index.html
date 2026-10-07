@@ -1,0 +1,1461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Ghana Life 3D</title>
+
+<style>
+html,body{
+    margin:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#111;
+    font-family:Arial,sans-serif;
+}
+
+#game{
+    width:100%;
+    height:100%;
+    display:block;
+}
+
+#hud{
+    position:fixed;
+    top:10px;
+    left:10px;
+    z-index:10;
+    color:white;
+    background:rgba(0,0,0,.65);
+    padding:12px;
+    border-radius:12px;
+    font-size:13px;
+    line-height:1.6;
+    min-width:190px;
+}
+
+#message{
+    position:fixed;
+    left:50%;
+    bottom:115px;
+    transform:translateX(-50%);
+    z-index:20;
+    background:rgba(0,0,0,.75);
+    color:white;
+    padding:12px 18px;
+    border-radius:20px;
+    display:none;
+    text-align:center;
+}
+
+#interaction{
+    position:fixed;
+    right:18px;
+    bottom:30px;
+    z-index:20;
+    width:72px;
+    height:72px;
+    border:0;
+    border-radius:50%;
+    background:#f5c542;
+    font-size:18px;
+    font-weight:bold;
+}
+
+#phone{
+    position:fixed;
+    right:15px;
+    top:15px;
+    z-index:20;
+    padding:10px 15px;
+    border:0;
+    border-radius:15px;
+}
+
+#phonePanel{
+    display:none;
+    position:fixed;
+    right:15px;
+    top:65px;
+    width:280px;
+    max-height:70vh;
+    overflow:auto;
+    background:#111;
+    color:white;
+    z-index:30;
+    border-radius:18px;
+    padding:15px;
+    box-shadow:0 10px 40px rgba(0,0,0,.5);
+}
+
+#controls{
+    position:fixed;
+    left:15px;
+    bottom:20px;
+    z-index:20;
+    width:150px;
+    height:150px;
+}
+
+.control{
+    position:absolute;
+    width:48px;
+    height:48px;
+    border:0;
+    border-radius:50%;
+    background:rgba(255,255,255,.65);
+    font-weight:bold;
+}
+
+.up{left:51px;top:0}
+.left{left:0;top:51px}
+.down{left:51px;top:102px}
+.right{left:102px;top:51px}
+
+button{
+    cursor:pointer;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+    <b>🇬🇭 GHANA LIFE 3D</b><br>
+    Day: <span id="day">1</span><br>
+    Time: <span id="time">06:30</span><br>
+    Cash: GH₵<span id="cash">120</span><br>
+    MoMo: GH₵<span id="momo">85</span><br>
+    Energy: <span id="energy">100</span>%<br>
+    Hunger: <span id="hunger">20</span>%<br>
+    Health: <span id="health">100</span>%<br>
+    Job: <span id="job">Unemployed</span><br>
+    Weather: <span id="weather">Sunny</span>
+</div>
+
+<button id="phone">📱 Phone</button>
+
+<div id="phonePanel">
+    <h3>📱 Phone</h3>
+    <button onclick="showContacts()">WhatsApp</button>
+    <button onclick="showMomo()">MoMo</button>
+    <button onclick="saveGame()">Save Game</button>
+    <hr>
+    <div id="phoneContent">
+        Welcome to your phone.
+    </div>
+</div>
+
+<div id="message"></div>
+
+<button id="interaction">E</button>
+
+<div id="controls">
+    <button class="control up" data-key="w">▲</button>
+    <button class="control left" data-key="a">◀</button>
+    <button class="control down" data-key="s">▼</button>
+    <button class="control right" data-key="d">▶</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+
+/* =========================================================
+   GHANA LIFE 3D
+   ========================================================= */
+
+const canvas = document.getElementById("game");
+
+const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias:true
+});
+
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+const camera = new THREE.PerspectiveCamera(
+    60,
+    innerWidth/innerHeight,
+    .1,
+    1000
+);
+
+camera.position.set(0,6,10);
+
+const clock = new THREE.Clock();
+
+/* =========================
+   LIGHTING
+========================= */
+
+const sun = new THREE.DirectionalLight(0xffffff,1.2);
+sun.position.set(30,50,20);
+sun.castShadow=true;
+scene.add(sun);
+
+scene.add(new THREE.HemisphereLight(
+    0xffffff,
+    0x555555,
+    .7
+));
+
+/* =========================
+   GAME STATE
+========================= */
+
+const state={
+    day:1,
+    minutes:390,
+    cash:120,
+    momo:85,
+    energy:100,
+    hunger:20,
+    health:100,
+    hygiene:80,
+    job:"Unemployed",
+    weather:"Sunny",
+    dumsor:false,
+    relationship:{},
+    inventory:{
+        bread:0,
+        water:0,
+        waakye:0,
+        jollof:0
+    }
+};
+
+/* =========================
+   WORLD
+========================= */
+
+const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(500,500),
+    new THREE.MeshStandardMaterial({
+        color:0x557a45
+    })
+);
+
+ground.rotation.x=-Math.PI/2;
+ground.receiveShadow=true;
+scene.add(ground);
+
+/* Roads */
+
+function road(x,z,w,d){
+
+    const r=new THREE.Mesh(
+        new THREE.BoxGeometry(w,.08,d),
+        new THREE.MeshStandardMaterial({
+            color:0x333333
+        })
+    );
+
+    r.position.set(x,.04,z);
+    scene.add(r);
+}
+
+road(0,0,18,500);
+road(0,0,500,18);
+road(-80,0,10,500);
+road(80,0,10,500);
+road(0,-80,500,10);
+road(0,80,500,10);
+
+/* =========================
+   BUILDINGS
+========================= */
+
+const buildings=[];
+
+function building(name,x,z,w,d,color=0xc98c5b){
+
+    const group=new THREE.Group();
+
+    const body=new THREE.Mesh(
+        new THREE.BoxGeometry(w,7,d),
+        new THREE.MeshStandardMaterial({
+            color
+        })
+    );
+
+    body.position.y=3.5;
+    body.castShadow=true;
+    body.receiveShadow=true;
+
+    group.add(body);
+
+    const roof=new THREE.Mesh(
+        new THREE.BoxGeometry(w+.4,.6,d+.4),
+        new THREE.MeshStandardMaterial({
+            color:0x8b2e20
+        })
+    );
+
+    roof.position.y=7;
+    group.add(roof);
+
+    group.position.set(x,0,z);
+
+    scene.add(group);
+
+    buildings.push({
+        name,
+        object:group,
+        x,
+        z,
+        w,
+        d
+    });
+
+    label(name,x,z,8);
+
+    return group;
+}
+
+/* Text labels */
+
+function label(text,x,z,y){
+
+    const c=document.createElement("canvas");
+    c.width=512;
+    c.height=80;
+
+    const ctx=c.getContext("2d");
+    ctx.fillStyle="white";
+    ctx.font="bold 38px Arial";
+    ctx.textAlign="center";
+    ctx.fillText(text,256,50);
+
+    const texture=new THREE.CanvasTexture(c);
+
+    const sprite=new THREE.Sprite(
+        new THREE.SpriteMaterial({
+            map:texture,
+            transparent:true
+        })
+    );
+
+    sprite.position.set(x,y,z);
+    sprite.scale.set(8,1.25,1);
+
+    scene.add(sprite);
+}
+
+/* Ghana neighborhood */
+
+building("YOUR COMPOUND",-35,-35,22,18,0xd0a06a);
+building("PROVISION SHOP",-5,-35,12,12,0xf0c85a);
+building("KOJO CHOP BAR",25,-35,16,14,0xb96f3c);
+building("ADJOA SALON",55,-35,14,12,0xdb7f9c);
+
+building("COMMUNITY PHARMACY",-35,35,14,12,0xd8eeee);
+building("JOB CENTRE",0,35,16,12,0x82a5d8);
+building("COMMUNITY SCHOOL",40,35,25,18,0xd9b14f);
+
+building("KANESHIE STATION",-70,0,20,18,0x777777);
+building("MADINA MARKET",0,75,28,20,0xc98f42);
+building("OSU FOOD COURT",70,0,25,18,0x9e5738);
+building("CIRCLE",-70,-75,25,20,0x777777);
+
+/* =========================
+   PLAYER
+========================= */
+
+const player=new THREE.Group();
+
+const body=new THREE.Mesh(
+    new THREE.CapsuleGeometry(.65,1.5,6,12),
+    new THREE.MeshStandardMaterial({
+        color:0x2b63a0
+    })
+);
+
+body.position.y=1.4;
+body.castShadow=true;
+player.add(body);
+
+const head=new THREE.Mesh(
+    new THREE.SphereGeometry(.48,16,16),
+    new THREE.MeshStandardMaterial({
+        color:0x75452b
+    })
+);
+
+head.position.y=2.65;
+head.castShadow=true;
+player.add(head);
+
+player.position.set(-35,0,-25);
+scene.add(player);
+
+/* =========================
+   NPC SYSTEM
+========================= */
+
+const npcs=[];
+
+const npcData=[
+    {
+        name:"Ama",
+        color:0xc75c88,
+        home:[-35,-35],
+        work:[-5,-35],
+        routine:["home","work","market","home"]
+    },
+    {
+        name:"Kojo",
+        color:0x3b7dc4,
+        home:[25,-35],
+        work:[25,-35],
+        routine:["home","work","work","home"]
+    },
+    {
+        name:"Kwaku",
+        color:0x3a9b59,
+        home:[-35,-35],
+        work:[-70,0],
+        routine:["home","station","station","home"]
+    },
+    {
+        name:"Esi",
+        color:0xe0a92d,
+        home:[-35,-35],
+        work:[40,35],
+        routine:["home","school","school","home"]
+    },
+    {
+        name:"Mensah",
+        color:0x8d5dc4,
+        home:[55,-35],
+        work:[0,35],
+        routine:["home","work","market","home"]
+    },
+    {
+        name:"Adjoa",
+        color:0xd35d6e,
+        home:[55,-35],
+        work:[55,-35],
+        routine:["home","work","work","home"]
+    }
+];
+
+function createNPC(data,index){
+
+    const group=new THREE.Group();
+
+    const b=new THREE.Mesh(
+        new THREE.CapsuleGeometry(.5,1.2,6,10),
+        new THREE.MeshStandardMaterial({
+            color:data.color
+        })
+    );
+
+    b.position.y=1.2;
+    b.castShadow=true;
+
+    group.add(b);
+
+    const h=new THREE.Mesh(
+        new THREE.SphereGeometry(.38,14,14),
+        new THREE.MeshStandardMaterial({
+            color:0x75452b
+        })
+    );
+
+    h.position.y=2.2;
+    group.add(h);
+
+    group.position.set(
+        data.home[0]+index*2,
+        0,
+        data.home[1]+index
+    );
+
+    scene.add(group);
+
+    const npc={
+        ...data,
+        object:group,
+        target:new THREE.Vector3(...data.home.map(v=>v),0),
+        relationship:0,
+        index
+    };
+
+    npcs.push(npc);
+
+    label(data.name,group.position.x,group.position.z,4);
+
+    return npc;
+}
+
+npcData.forEach(createNPC);
+
+/* =========================
+   VEHICLES
+========================= */
+
+const vehicles=[];
+
+function createVehicle(x,z,color,dir){
+
+    const v=new THREE.Mesh(
+        new THREE.BoxGeometry(4,.9,1.8),
+        new THREE.MeshStandardMaterial({
+            color
+        })
+    );
+
+    v.position.set(x,.7,z);
+    v.castShadow=true;
+
+    scene.add(v);
+
+    vehicles.push({
+        object:v,
+        dir
+    });
+}
+
+for(let i=0;i<12;i++){
+
+    createVehicle(
+        -220+i*35,
+        i%2===0?4:-4,
+        i%3===0?0xd63c32:0xe2b52e,
+        i%2===0?1:-1
+    );
+}
+
+/* =========================
+   TREES
+========================= */
+
+function tree(x,z){
+
+    const g=new THREE.Group();
+
+    const trunk=new THREE.Mesh(
+        new THREE.CylinderGeometry(.3,.45,3,8),
+        new THREE.MeshStandardMaterial({
+            color:0x75452b
+        })
+    );
+
+    trunk.position.y=1.5;
+    g.add(trunk);
+
+    const crown=new THREE.Mesh(
+        new THREE.SphereGeometry(2.2,10,10),
+        new THREE.MeshStandardMaterial({
+            color:0x267a3d
+        })
+    );
+
+    crown.position.y=4;
+    g.add(crown);
+
+    g.position.set(x,0,z);
+    scene.add(g);
+}
+
+for(let i=0;i<80;i++){
+
+    const x=(Math.random()-.5)*420;
+    const z=(Math.random()-.5)*420;
+
+    if(Math.abs(x)<100 && Math.abs(z)<100) continue;
+
+    tree(x,z);
+}
+
+/* =========================
+   CONTROLS
+========================= */
+
+const keys={};
+
+addEventListener("keydown",e=>{
+    keys[e.key.toLowerCase()]=true;
+
+    if(e.key.toLowerCase()==="e"){
+        interact();
+    }
+
+    if(e.key.toLowerCase()==="p"){
+        togglePhone();
+    }
+
+    if(e.key.toLowerCase()==="r"){
+        sleep();
+    }
+});
+
+addEventListener("keyup",e=>{
+    keys[e.key.toLowerCase()]=false;
+});
+
+document.querySelectorAll(".control").forEach(btn=>{
+
+    const key=btn.dataset.key;
+
+    btn.addEventListener("touchstart",e=>{
+        e.preventDefault();
+        keys[key]=true;
+    });
+
+    btn.addEventListener("touchend",e=>{
+        e.preventDefault();
+        keys[key]=false;
+    });
+
+    btn.addEventListener("mousedown",()=>{
+        keys[key]=true;
+    });
+
+    btn.addEventListener("mouseup",()=>{
+        keys[key]=false;
+    });
+});
+
+document.getElementById("interaction")
+.addEventListener("click",interact);
+
+document.getElementById("phone")
+.addEventListener("click",togglePhone);
+
+/* =========================
+   PLAYER MOVEMENT
+========================= */
+
+function updatePlayer(dt){
+
+    let dx=0;
+    let dz=0;
+
+    if(keys.w) dz-=1;
+    if(keys.s) dz+=1;
+    if(keys.a) dx-=1;
+    if(keys.d) dx+=1;
+
+    if(dx||dz){
+
+        const length=Math.hypot(dx,dz);
+
+        dx/=length;
+        dz/=length;
+
+        const speed=keys.shift?8:5;
+
+        player.position.x+=dx*speed*dt;
+        player.position.z+=dz*speed*dt;
+
+        state.energy-=dt*.7;
+        state.hunger+=dt*.12;
+    }
+
+    player.position.x=Math.max(-230,Math.min(230,player.position.x));
+    player.position.z=Math.max(-230,Math.min(230,player.position.z));
+
+    camera.position.lerp(
+        new THREE.Vector3(
+            player.position.x,
+            player.position.y+6,
+            player.position.z+9
+        ),
+        .08
+    );
+
+    camera.lookAt(
+        player.position.x,
+        player.position.y+1,
+        player.position.z
+    );
+}
+
+/* =========================
+   NPC MOVEMENT
+========================= */
+
+function updateNPCs(dt){
+
+    const hour=state.minutes/60;
+
+    npcs.forEach(npc=>{
+
+        let target=npc.home;
+
+        if(hour>=7 && hour<16){
+            target=npc.work;
+        }
+        else if(hour>=16 && hour<18){
+            target=[0,75];
+        }
+
+        const tx=target[0];
+        const tz=target[1];
+
+        const dx=tx-npc.object.position.x;
+        const dz=tz-npc.object.position.z;
+
+        const dist=Math.hypot(dx,dz);
+
+        if(dist>2){
+
+            npc.object.position.x += dx/dist*dt*1.8;
+            npc.object.position.z += dz/dist*dt*1.8;
+
+        }
+    });
+}
+
+/* =========================
+   VEHICLES
+========================= */
+
+function updateVehicles(dt){
+
+    vehicles.forEach(v=>{
+
+        v.object.position.x += v.dir*dt*12;
+
+        if(v.object.position.x>240)
+            v.object.position.x=-240;
+
+        if(v.object.position.x<-240)
+            v.object.position.x=240;
+    });
+}
+
+/* =========================
+   GAME TIME
+========================= */
+
+function updateTime(dt){
+
+    state.minutes += dt*3;
+
+    if(state.minutes>=1440){
+
+        state.minutes=0;
+        state.day++;
+
+        state.energy=Math.min(100,state.energy+40);
+        state.hunger+=10;
+
+        if(state.hunger>100)
+            state.health-=5;
+    }
+
+    state.hunger=Math.min(100,state.hunger);
+
+    if(state.energy<0)
+        state.energy=0;
+
+    updateHUD();
+}
+
+/* =========================
+   WEATHER
+========================= */
+
+let rain=null;
+
+function toggleRain(){
+
+    if(rain){
+
+        scene.remove(rain);
+        rain=null;
+        state.weather="Sunny";
+        scene.background=new THREE.Color(0x87ceeb);
+
+    }else{
+
+        const geo=new THREE.BufferGeometry();
+
+        const count=1500;
+        const positions=[];
+
+        for(let i=0;i<count;i++){
+
+            positions.push(
+                (Math.random()-.5)*300,
+                Math.random()*100,
+                (Math.random()-.5)*300
+            );
+        }
+
+        geo.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(positions,3)
+        );
+
+        rain=new THREE.Points(
+            geo,
+            new THREE.PointsMaterial({
+                color:0xaaddff,
+                size:.18
+            })
+        );
+
+        scene.add(rain);
+
+        state.weather="Rainy";
+        scene.background=new THREE.Color(0x506070);
+    }
+}
+
+/* =========================
+   DUMSOR
+========================= */
+
+function dumsor(){
+
+    state.dumsor=!state.dumsor;
+
+    if(state.dumsor){
+
+        sun.intensity=.15;
+        state.weather="Dumsor";
+
+    }else{
+
+        sun.intensity=1.2;
+        state.weather=rain?"Rainy":"Sunny";
+    }
+
+    updateHUD();
+}
+
+/* =========================
+   INTERACTIONS
+========================= */
+
+function nearestNPC(){
+
+    let best=null;
+    let distance=999;
+
+    npcs.forEach(npc=>{
+
+        const d=player.position.distanceTo(
+            npc.object.position
+        );
+
+        if(d<distance){
+
+            distance=d;
+            best=npc;
+        }
+    });
+
+    return distance<5?best:null;
+}
+
+function nearestBuilding(){
+
+    let best=null;
+    let distance=999;
+
+    buildings.forEach(b=>{
+
+        const d=Math.hypot(
+            player.position.x-b.x,
+            player.position.z-b.z
+        );
+
+        if(d<Math.max(b.w,b.d)/2+5 && d<distance){
+
+            distance=d;
+            best=b;
+        }
+    });
+
+    return best;
+}
+
+function interact(){
+
+    const npc=nearestNPC();
+
+    if(npc){
+
+        talk(npc);
+        return;
+    }
+
+    const building=nearestBuilding();
+
+    if(!building){
+
+        msg("Walk closer to a person or building.");
+        return;
+    }
+
+    switch(building.name){
+
+        case"YOUR COMPOUND":
+            msg("Your compound. Press R to sleep.");
+            break;
+
+        case"PROVISION SHOP":
+            shop();
+            break;
+
+        case"KOJO CHOP BAR":
+            chopBar();
+            break;
+
+        case"COMMUNITY PHARMACY":
+            pharmacy();
+            break;
+
+        case"JOB CENTRE":
+            jobs();
+            break;
+
+        case"KANESHIE STATION":
+            transport();
+            break;
+
+        case"MADINA MARKET":
+            market();
+            break;
+
+        default:
+            msg(building.name+" is open.");
+    }
+}
+
+/* =========================
+   NPC TALK
+========================= */
+
+function talk(npc){
+
+    const choice=prompt(
+        npc.name+
+        "\nRelationship: "+
+        npc.relationship+
+        "\n\n1. Talk\n2. Give GH₵10\n3. Invite"
+    );
+
+    if(choice==="1"){
+
+        npc.relationship+=5;
+
+        msg(
+            npc.name+
+            ": Chale, how you dey? Accra life no easy oo!"
+        );
+
+    }
+
+    if(choice==="2"){
+
+        if(state.cash>=10){
+
+            state.cash-=10;
+            npc.relationship+=12;
+
+            msg(
+                "You gave "+npc.name+
+                " GH₵10."
+            );
+
+        }else{
+
+            msg("You don't have enough cash.");
+        }
+    }
+
+    if(choice==="3"){
+
+        npc.relationship+=8;
+
+        msg(
+            npc.name+
+            ": Ei, sure! Let's see how the day goes."
+        );
+    }
+
+    updateHUD();
+}
+
+/* =========================
+   SHOPS
+========================= */
+
+function shop(){
+
+    const item=prompt(
+        "PROVISION SHOP\n\n"+
+        "1. Bread - GH₵8\n"+
+        "2. Water - GH₵3\n"+
+        "3. Groceries - GH₵20"
+    );
+
+    const prices={
+        "1":8,
+        "2":3,
+        "3":20
+    };
+
+    if(prices[item]){
+
+        if(state.cash>=prices[item]){
+
+            state.cash-=prices[item];
+
+            if(item==="1")
+                state.inventory.bread++;
+
+            if(item==="2")
+                state.inventory.water++;
+
+            state.hunger=Math.max(0,state.hunger-10);
+
+            msg("Purchase successful.");
+
+        }else{
+
+            msg("Not enough cash.");
+        }
+    }
+
+    updateHUD();
+}
+
+function chopBar(){
+
+    const item=prompt(
+        "KOJO CHOP BAR\n\n"+
+        "1. Waakye - GH₵25\n"+
+        "2. Jollof - GH₵30\n"+
+        "3. Banku & Soup - GH₵28"
+    );
+
+    const prices={
+        "1":25,
+        "2":30,
+        "3":28
+    };
+
+    if(prices[item]){
+
+        if(state.cash>=prices[item]){
+
+            state.cash-=prices[item];
+            state.hunger=Math.max(0,state.hunger-35);
+            state.energy=Math.min(100,state.energy+5);
+
+            msg("You enjoyed your meal. Chale, nice food!");
+
+        }else{
+
+            msg("You don't have enough money.");
+        }
+    }
+
+    updateHUD();
+}
+
+function pharmacy(){
+
+    if(state.cash>=15){
+
+        state.cash-=15;
+        state.health=Math.min(100,state.health+20);
+
+        msg("You bought medicine.");
+
+    }else{
+
+        msg("Medicine costs GH₵15.");
+    }
+
+    updateHUD();
+}
+
+function market(){
+
+    msg(
+        "Madina Market is busy. "+
+        "Sellers are shouting prices and customers are bargaining."
+    );
+}
+
+/* =========================
+   JOBS
+========================= */
+
+function jobs(){
+
+    const choice=prompt(
+        "JOB CENTRE\n\n"+
+        "1. Provision Shop Assistant - GH₵45/day\n"+
+        "2. Chop Bar Assistant - GH₵50/day\n"+
+        "3. Trotro Mate - GH₵60/day\n"+
+        "4. Online Content Worker - GH₵40/day"
+    );
+
+    const jobs={
+        "1":["Provision Shop Assistant",45],
+        "2":["Chop Bar Assistant",50],
+        "3":["Trotro Mate",60],
+        "4":["Online Content Worker",40]
+    };
+
+    if(jobs[choice]){
+
+        state.job=jobs[choice][0];
+
+        msg(
+            "You got a job as "+
+            state.job+
+            ". Work during the day to earn GH₵"+
+            jobs[choice][1]+"."
+        );
+    }
+
+    updateHUD();
+}
+
+/* =========================
+   TRANSPORT
+========================= */
+
+function transport(){
+
+    const destination=prompt(
+        "TROTRO STATION\n\n"+
+        "1. Circle - GH₵8\n"+
+        "2. Madina - GH₵10\n"+
+        "3. Osu - GH₵12"
+    );
+
+    const routes={
+        "1":[-70,-75,8,"Circle"],
+        "2":[0,75,10,"Madina"],
+        "3":[70,0,12,"Osu"]
+    };
+
+    if(routes[destination]){
+
+        const r=routes[destination];
+
+        if(state.cash>=r[2]){
+
+            state.cash-=r[2];
+
+            player.position.set(r[0],0,r[1]);
+
+            msg(
+                "You boarded a trotro to "+
+                r[3]+"."
+            );
+
+        }else{
+
+            msg("You don't have enough for the fare.");
+        }
+    }
+
+    updateHUD();
+}
+
+/* =========================
+   SLEEP
+========================= */
+
+function sleep(){
+
+    if(
+        player.position.distanceTo(
+            new THREE.Vector3(-35,0,-35)
+        )<15
+    ){
+
+        state.day++;
+        state.minutes=390;
+        state.energy=100;
+        state.hunger=Math.min(100,state.hunger+10);
+        state.hygiene=Math.max(0,state.hygiene-10);
+
+        if(Math.random()<.25)
+            toggleRain();
+
+        if(Math.random()<.2)
+            dumsor();
+
+        msg("You slept. Good morning! Day "+state.day);
+
+        updateHUD();
+
+    }else{
+
+        msg("You need to be at your compound to sleep.");
+    }
+}
+
+/* =========================
+   PHONE
+========================= */
+
+function togglePhone(){
+
+    const panel=document.getElementById("phonePanel");
+
+    panel.style.display=
+        panel.style.display==="block"
+        ?"none"
+        :"block";
+}
+
+function showContacts(){
+
+    document.getElementById("phoneContent").innerHTML=`
+        <h4>WhatsApp</h4>
+        <p>👩 Ama: "Chale, you dey around?"</p>
+        <p>👨 Kojo: "Come chop something."</p>
+        <p>🚕 Kwaku: "Circle! Circle!"</p>
+        <p>👩 Esi: "School was stressful today."</p>
+    `;
+}
+
+function showMomo(){
+
+    document.getElementById("phoneContent").innerHTML=`
+        <h4>MoMo</h4>
+        <p>Balance: GH₵${state.momo}</p>
+        <button onclick="transferMomo()">Send Money</button>
+    `;
+}
+
+function transferMomo(){
+
+    const amount=Number(
+        prompt("Enter amount to send:")
+    );
+
+    if(amount>0 && amount<=state.momo){
+
+        state.momo-=amount;
+
+        msg(
+            "You sent GH₵"+
+            amount+
+            " through MoMo."
+        );
+
+        showMomo();
+        updateHUD();
+    }
+}
+
+/* =========================
+   SAVE
+========================= */
+
+function saveGame(){
+
+    localStorage.setItem(
+        "ghanaLife3D",
+        JSON.stringify(state)
+    );
+
+    msg("Game saved.");
+}
+
+function loadGame(){
+
+    const saved=localStorage.getItem(
+        "ghanaLife3D"
+    );
+
+    if(saved){
+
+        Object.assign(
+            state,
+            JSON.parse(saved)
+        );
+
+        updateHUD();
+    }
+}
+
+loadGame();
+
+/* =========================
+   HUD
+========================= */
+
+function updateHUD(){
+
+    document.getElementById("day").textContent=
+        state.day;
+
+    const h=Math.floor(state.minutes/60);
+    const m=Math.floor(state.minutes%60);
+
+    document.getElementById("time").textContent=
+        String(h).padStart(2,"0")+
+        ":"+
+        String(m).padStart(2,"0");
+
+    document.getElementById("cash").textContent=
+        Math.floor(state.cash);
+
+    document.getElementById("momo").textContent=
+        Math.floor(state.momo);
+
+    document.getElementById("energy").textContent=
+        Math.floor(state.energy);
+
+    document.getElementById("hunger").textContent=
+        Math.floor(state.hunger);
+
+    document.getElementById("health").textContent=
+        Math.floor(state.health);
+
+    document.getElementById("job").textContent=
+        state.job;
+
+    document.getElementById("weather").textContent=
+        state.weather;
+}
+
+/* =========================
+   MESSAGE
+========================= */
+
+let messageTimer;
+
+function msg(text){
+
+    const el=document.getElementById("message");
+
+    el.textContent=text;
+    el.style.display="block";
+
+    clearTimeout(messageTimer);
+
+    messageTimer=setTimeout(()=>{
+        el.style.display="none";
+    },3500);
+}
+
+/* =========================
+   RANDOM EVENTS
+========================= */
+
+let eventTimer=0;
+
+function randomEvents(dt){
+
+    eventTimer+=dt;
+
+    if(eventTimer>60){
+
+        eventTimer=0;
+
+        const r=Math.random();
+
+        if(r<.08){
+
+            toggleRain();
+            msg("🌧️ Heavy rain has started.");
+
+        }else if(r<.13){
+
+            dumsor();
+            msg("💡 ECG power cut — Dumsor!");
+
+        }else if(r<.2){
+
+            msg(
+                "🚦 Traffic is heavy around Circle."
+            );
+        }
+    }
+}
+
+/* =========================
+   GAME LOOP
+========================= */
+
+function animate(){
+
+    requestAnimationFrame(animate);
+
+    const dt=Math.min(
+        clock.getDelta(),
+        .05
+    );
+
+    updatePlayer(dt);
+    updateNPCs(dt);
+    updateVehicles(dt);
+    updateTime(dt);
+    randomEvents(dt);
+
+    if(rain){
+
+        const positions=
+            rain.geometry.attributes.position.array;
+
+        for(let i=1;i<positions.length;i+=3){
+
+            positions[i]-=dt*35;
+
+            if(positions[i]<0)
+                positions[i]=100;
+        }
+
+        rain.geometry.attributes.position.needsUpdate=true;
+    }
+
+    renderer.render(
+        scene,
+        camera
+    );
+}
+
+animate();
+
+/* =========================
+   RESIZE
+========================= */
+
+addEventListener("resize",()=>{
+
+    camera.aspect=
+        innerWidth/innerHeight;
+
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(
+        innerWidth,
+        innerHeight
+    );
+});
+
+updateHUD();
+
+msg(
+    "Welcome to Ghana Life 🇬🇭 Walk around Accra and start your life."
+);
+
+</script>
+
+</body>
+  </html>
